@@ -8,7 +8,7 @@ server.post("/github", async (req, reply) => {
 
   console.log(body);
 
-  return { hello: "world" };
+  return { hello: "world2" };
 });
 
 try {
