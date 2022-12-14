@@ -5,16 +5,19 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "concurrently -n js,node \"tsc -w\" \"nodemon dist/bot.js\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^18.11.15",
+    "concurrently": "^7.6.0",
+    "nodemon": "^2.0.20",
     "typescript": "^4.9.4"
   },
   "dependencies": {
-    "discord.js": "^14.7.1"
+    "discord.js": "^14.7.1",
+    "fastify": "^4.10.2"
   }
 }
