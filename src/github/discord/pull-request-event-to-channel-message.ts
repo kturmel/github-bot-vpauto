@@ -86,7 +86,7 @@ function pullRequestMessageEmbeds(
 
   return [
     {
-      title: `Pull request #${pullRequest.number} - "${pullRequest.pull_request.title}" (${pullRequest.repository.full_name})`,
+      title: `#${pullRequest.number} ${pullRequest.pull_request.title} (${pullRequest.repository.full_name})`,
       description:
         pullRequest.pull_request.body?.slice(0, 3000) ?? "Aucune description",
       image: {
