@@ -8,7 +8,5 @@ console.log("Deploy Commands");
 await deployCommands();
 console.log("Start GitHub Server");
 await startGitHubServer();
-
 console.log("Ready!");
-
 await handle();

@@ -1,15 +1,13 @@
 import {
   Interaction,
-  CommandInteractionOption,
   SlashCommandBuilder,
   ChannelType,
   PermissionFlagsBits,
 } from "discord.js";
 import { Command } from "./commands.js";
+import { discordConfig, updateDiscordConfig } from "../config.js";
 
-let botChannelId: string | undefined = "1052607428342055012";
-
-const setupCommand: Command = {
+export const setupCommand: Command = {
   builder: new SlashCommandBuilder()
     .setName("vp-setup")
     .setDescription("Setup the bot")
@@ -38,12 +36,10 @@ const setupCommand: Command = {
       return;
     }
 
-    botChannelId = channel.id;
+    await updateDiscordConfig({ ...discordConfig, channelId: channel.id });
 
     interaction.reply({
-      content: "Setup command executed!",
+      content: `Bot configuré sur ${channel}`,
     });
   },
 };
-
-export { botChannelId, setupCommand };

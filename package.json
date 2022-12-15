@@ -5,7 +5,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n js,node \"tsup --watch\" \"nodemon -r dotenv/config dist/bot.js dotenv_config_path=.env.local\""
+    "dev": "concurrently -n js,node \"tsup --watch\" \"nodemon -r dotenv/config dist/bot.js dotenv_config_path=.env.local\"",
+    "build": "tsup",
+    "start": "node -r dotenv/config dist/bot.js dotenv_config_path=.env.local"
   },
   "keywords": [],
   "author": "",

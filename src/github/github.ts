@@ -4,36 +4,51 @@ import { PullRequestEvent } from "@octokit/webhooks-types";
 import { pullRequestEventToChannelMessage } from "./discord/pull-request-event-to-channel-message.js";
 import { discordClient } from "../discord/discord.js";
 import { discordConfig } from "../discord/config.js";
+import { verifySignature } from "./verify-signature.js";
+import { gitHubSecret } from "./variables.js";
 
 const server = Fastify({ logger: true });
 
 server.post("/github", async (req, reply) => {
-  const body = req.body as PullRequestEvent;
+  const body = req.body as PullRequestEvent | { zen: string };
+  const signature = req.headers["x-hub-signature-256"] as string | undefined;
 
-  console.log(body);
-
-  console.log("discord config", discordConfig);
-
-  if (discordConfig.channelId) {
-    const channel = (await discordClient.channels.fetch(
-      discordConfig.channelId
-    )) as TextChannel;
-
-    console.log("che", channel);
-
-    const pullRequestMessage = pullRequestEventToChannelMessage(body);
-
-    if (pullRequestMessage) {
-      await channel.send(pullRequestMessage);
-    }
+  if (!signature) {
+    reply.status(401);
+    return { ok: false };
   }
 
-  return { hello: "world2" };
+  if (!verifySignature(gitHubSecret, JSON.stringify(body), signature)) {
+    reply.status(401);
+    return { ok: false };
+  }
+
+  if ("zen" in body) {
+    return { ok: true };
+  }
+
+  if (!discordConfig.channelId) {
+    return { ok: false };
+  }
+
+  const channel = (await discordClient.channels.fetch(
+    discordConfig.channelId
+  )) as TextChannel;
+
+  const pullRequestMessage = pullRequestEventToChannelMessage(body);
+
+  if (!pullRequestMessage) {
+    return { ok: false };
+  }
+
+  await channel.send(pullRequestMessage);
+
+  return { ok: true };
 });
 
 export async function startGitHubServer() {
   try {
-    await server.listen({ port: 4567 });
+    await server.listen({ port: 8456, host: "0.0.0.0" });
 
     return server;
   } catch (err) {

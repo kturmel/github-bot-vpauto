@@ -1,14 +1,29 @@
-import { PullRequestEvent } from "@octokit/webhooks-types";
+import {
+  PullRequestEvent,
+  PullRequestReviewRequestedEvent,
+  PullRequestReviewSubmittedEvent,
+} from "@octokit/webhooks-types";
 import { APIEmbedField, MessageCreateOptions, User } from "discord.js";
 import { gitHubUsers } from "../../discord/github/users.js";
 
+type PullRequestWebHookEvent =
+  | PullRequestEvent
+  | PullRequestReviewSubmittedEvent
+  | PullRequestReviewRequestedEvent;
+
 interface MessageOptions {
   taskNumber: number | null;
-  discordUser: User | null;
+  discordUser: string | null;
   userAvatarUrl: string;
 }
 
-function extractTaskNumberFromPullRequest(pullRequest: PullRequestEvent) {
+interface MessageReviewOptions extends MessageOptions {
+  reviewDiscordUser: string | null;
+}
+
+function extractTaskNumberFromPullRequest(
+  pullRequest: PullRequestWebHookEvent
+) {
   const matches = pullRequest.pull_request.title.match(/\w+\((\d+)\):/);
 
   if (!matches) {
@@ -24,12 +39,37 @@ function extractTaskNumberFromPullRequest(pullRequest: PullRequestEvent) {
   return taskNumber;
 }
 
+function extractDiscordUserFromPullRequestReview(
+  pullRequest: PullRequestReviewSubmittedEvent | PullRequestReviewRequestedEvent
+): string | null {
+  if (pullRequest.action === "submitted") {
+    return (
+      gitHubUsers[
+        pullRequest.review.user.login as keyof typeof gitHubUsers
+      ]?.toString() ?? pullRequest.review.user.login
+    );
+  }
+
+  if (
+    pullRequest.action === "review_requested" &&
+    "requested_team" in pullRequest
+  ) {
+    return null;
+  }
+
+  return (
+    gitHubUsers[
+      pullRequest.requested_reviewer.login as keyof typeof gitHubUsers
+    ]?.toString() ?? pullRequest.requested_reviewer.login
+  );
+}
+
 function transformTaskToDevOpsUrl(taskNumber: number) {
   return `https://dev.azure.com/VPAuto/VPA-Marketplace/_workitems/edit/${taskNumber}`;
 }
 
 function extractDiscordUserFromPullRequest(
-  pullRequest: PullRequestEvent
+  pullRequest: PullRequestWebHookEvent
 ): User | null {
   return (
     gitHubUsers[
@@ -38,12 +78,22 @@ function extractDiscordUserFromPullRequest(
   );
 }
 
+function extractDiscordUserNameFromPullRequest(
+  pullRequest: PullRequestWebHookEvent
+): string | null {
+  return (
+    gitHubUsers[
+      pullRequest.pull_request.user.login as keyof typeof gitHubUsers
+    ]?.toString() ?? pullRequest.pull_request.user.login
+  );
+}
+
 function openedPullRequestMessage(
-  pullRequest: PullRequestEvent,
+  pullRequest: PullRequestWebHookEvent,
   { taskNumber, discordUser, userAvatarUrl }: MessageOptions
 ): MessageCreateOptions {
   return {
-    content: `Nouvelle pull request #${pullRequest.number}`,
+    content: `Nouvelle pull request #${pullRequest.pull_request.number}`,
     embeds: pullRequestMessageEmbeds(pullRequest, {
       taskNumber,
       discordUser,
@@ -53,11 +103,11 @@ function openedPullRequestMessage(
 }
 
 function mergedPullRequestMessage(
-  pullRequest: PullRequestEvent,
+  pullRequest: PullRequestWebHookEvent,
   { taskNumber, discordUser, userAvatarUrl }: MessageOptions
 ): MessageCreateOptions {
   return {
-    content: `Pull request #${pullRequest.number} complétée`,
+    content: `Pull request #${pullRequest.pull_request.number} complétée`,
     embeds: pullRequestMessageEmbeds(pullRequest, {
       taskNumber,
       discordUser,
@@ -67,26 +117,28 @@ function mergedPullRequestMessage(
 }
 
 function pullRequestMessageEmbeds(
-  pullRequest: PullRequestEvent,
+  pullRequest: PullRequestWebHookEvent,
   { taskNumber, discordUser, userAvatarUrl }: MessageOptions
 ): MessageCreateOptions["embeds"] {
   const fields: APIEmbedField[] = [
     {
       name: "Auteur",
-      value: `${discordUser}` ?? pullRequest.pull_request.user.login,
+      value:
+        (discordUser ? `${discordUser}` : null) ??
+        pullRequest.pull_request.user.login,
     },
   ];
 
   if (taskNumber) {
     fields.push({
-      name: `Tâche ${taskNumber}`,
+      name: `Tâche #${taskNumber}`,
       value: transformTaskToDevOpsUrl(taskNumber),
     });
   }
 
   return [
     {
-      title: `#${pullRequest.number} — ${pullRequest.pull_request.title} (${pullRequest.repository.full_name})`,
+      title: `#${pullRequest.pull_request.number} — ${pullRequest.pull_request.title} (${pullRequest.repository.full_name})`,
       description:
         pullRequest.pull_request.body?.slice(0, 3000) ?? "Aucune description",
       image: {
@@ -98,20 +150,30 @@ function pullRequestMessageEmbeds(
   ];
 }
 
-function closedPullRequestMessage(
-  pullRequest: PullRequestEvent,
-  {
+function pullRequestReviewMessageEmbeds(
+  pullRequest: PullRequestReviewSubmittedEvent,
+  { taskNumber, discordUser, userAvatarUrl }: MessageReviewOptions
+): MessageCreateOptions["embeds"] {
+  const embeds = pullRequestMessageEmbeds(pullRequest, {
     taskNumber,
     discordUser,
     userAvatarUrl,
-  }: {
-    userAvatarUrl: string;
-    discordUser: User | null;
-    taskNumber: null | number;
-  }
+  });
+
+  return embeds?.map((embed) => ({
+    ...embed,
+    description: `${
+      pullRequest.review.body?.slice(0, 1000) ?? "Commentaire indisponible"
+    }`,
+  }));
+}
+
+function closedPullRequestMessage(
+  pullRequest: PullRequestWebHookEvent,
+  { taskNumber, discordUser, userAvatarUrl }: MessageOptions
 ) {
   return {
-    content: `Pull request #${pullRequest.number} fermée`,
+    content: `Pull request #${pullRequest.pull_request.number} fermée`,
     embeds: pullRequestMessageEmbeds(pullRequest, {
       taskNumber,
       discordUser,
@@ -120,19 +182,138 @@ function closedPullRequestMessage(
   };
 }
 
-export function pullRequestEventToChannelMessage(
-  pullRequest: PullRequestEvent
-): MessageCreateOptions | null {
-  const taskNumber = extractTaskNumberFromPullRequest(pullRequest);
-  const discordUser = extractDiscordUserFromPullRequest(pullRequest);
-  const userAvatarUrl =
-    discordUser?.avatarURL() ?? pullRequest.pull_request.user.avatar_url;
+function reviewSubmittedPullRequestMessage(
+  pullRequest: PullRequestReviewSubmittedEvent,
+  {
+    taskNumber,
+    discordUser,
+    userAvatarUrl,
+    reviewDiscordUser,
+  }: MessageReviewOptions
+) {
+  let content = "";
 
+  if (pullRequest.review.state === "approved") {
+    content = `#${pullRequest.pull_request.number} approuvée${
+      reviewDiscordUser ? ` par ${reviewDiscordUser}` : ""
+    }`;
+  } else if (pullRequest.review.state === "changes_requested") {
+    content = `#${pullRequest.pull_request.number} changement demandé${
+      reviewDiscordUser ? ` par ${reviewDiscordUser}` : ""
+    }`;
+  } else if (pullRequest.review.state === "commented") {
+    content = `#${pullRequest.pull_request.number} commentée${
+      reviewDiscordUser ? ` par ${reviewDiscordUser}` : ""
+    }`;
+  } else if (pullRequest.review.state === "dismissed") {
+    content = `#${pullRequest.pull_request.number} rejetée${
+      reviewDiscordUser ? ` par ${reviewDiscordUser}` : ""
+    }`;
+  } else {
+    content = `#${pullRequest.pull_request.number} revue${
+      reviewDiscordUser ? ` par ${reviewDiscordUser}` : ""
+    }`;
+  }
+
+  return {
+    content,
+    embeds: pullRequestReviewMessageEmbeds(pullRequest, {
+      taskNumber,
+      discordUser,
+      userAvatarUrl,
+      reviewDiscordUser,
+    }),
+  };
+}
+
+function pullRequestRequestedMessageEmbeds(
+  pullRequest: PullRequestReviewRequestedEvent,
+  {
+    taskNumber,
+    discordUser,
+    userAvatarUrl,
+    reviewDiscordUser,
+  }: MessageReviewOptions
+) {
+  const embeds = pullRequestMessageEmbeds(pullRequest, {
+    taskNumber,
+    discordUser,
+    userAvatarUrl,
+  });
+
+  if ("requested_team" in pullRequest) {
+    return embeds?.map((embed) => ({
+      ...embed,
+      description: `Demande par l'équipe ${pullRequest.requested_team.name}`,
+    }));
+  }
+
+  return embeds?.map((embed) => ({
+    ...embed,
+    description: reviewDiscordUser
+      ? `Demande par ${reviewDiscordUser}`
+      : undefined,
+  }));
+}
+
+function reviewRequestedPullRequestMessage(
+  pullRequest: PullRequestReviewRequestedEvent,
+  {
+    taskNumber,
+    discordUser,
+    userAvatarUrl,
+    reviewDiscordUser,
+  }: MessageReviewOptions
+) {
+  return {
+    content: `Changement requis sur #${pullRequest.pull_request.number}${
+      discordUser ? ` pour ${discordUser}` : ""
+    } ${reviewDiscordUser ? ` par ${reviewDiscordUser}` : ""}`,
+    embeds: pullRequestRequestedMessageEmbeds(pullRequest, {
+      taskNumber,
+      discordUser,
+      userAvatarUrl,
+      reviewDiscordUser,
+    }),
+  };
+}
+
+export function pullRequestEventToChannelMessage(
+  pullRequest: PullRequestWebHookEvent
+): MessageCreateOptions | null {
   if (pullRequest.pull_request.draft) {
     return null;
   }
 
+  const taskNumber = extractTaskNumberFromPullRequest(pullRequest);
+  const discordUser = extractDiscordUserNameFromPullRequest(pullRequest);
+  const userAvatarUrl =
+    extractDiscordUserFromPullRequest(pullRequest)?.avatarURL() ??
+    pullRequest.pull_request.user.avatar_url;
+
   switch (pullRequest.action) {
+    case "submitted": {
+      const reviewDiscordUser =
+        extractDiscordUserFromPullRequestReview(pullRequest);
+
+      return reviewSubmittedPullRequestMessage(pullRequest, {
+        taskNumber,
+        discordUser,
+        reviewDiscordUser,
+        userAvatarUrl,
+      });
+    }
+    case "review_requested": {
+      const reviewDiscordUser =
+        extractDiscordUserFromPullRequestReview(pullRequest);
+
+      return reviewRequestedPullRequestMessage(pullRequest, {
+        taskNumber,
+        discordUser,
+        reviewDiscordUser,
+        userAvatarUrl,
+      });
+    }
     case "opened":
       return openedPullRequestMessage(pullRequest, {
         taskNumber,
