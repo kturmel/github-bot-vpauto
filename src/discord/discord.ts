@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, REST, Routes, Events } from "discord.js";
-import { botToken, botAppId, botGuildId } from "./variables.js";
+import { botToken, botAppId } from "./variables.js";
 import { commands } from "./commands/commands.js";
 
 const discordClient = new Client({
@@ -15,7 +15,7 @@ export function login() {
 }
 
 export async function deployCommands() {
-  await rest.put(Routes.applicationGuildCommands(botAppId, botGuildId), {
+  await rest.put(Routes.applicationCommands(botAppId), {
     body: commands.map((command) => command.builder.toJSON()),
   });
 }

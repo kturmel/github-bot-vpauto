@@ -6,13 +6,13 @@ export interface DiscordBotConfig {
 }
 
 export let discordConfig = JSON.parse(
-  await fs.readFile(path.resolve("discord-bot.config.json"), "utf-8")
+  await fs.readFile(path.resolve("config/discord-bot.config.json"), "utf-8")
 ) as DiscordBotConfig;
 
 export async function updateDiscordConfig(config: DiscordBotConfig) {
   await fs.writeFile(
-    path.resolve("discord-bot.config.json"),
-    JSON.stringify(config)
+    path.resolve("config/discord-bot.config.json"),
+    JSON.stringify(config, undefined, 2)
   );
 
   discordConfig = config;
