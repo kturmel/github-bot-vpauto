@@ -7,6 +7,7 @@ specifiers:
   discord.js: ^14.7.1
   dotenv: ^16.0.3
   fastify: ^4.10.2
+  fp-ts: ^2.13.1
   nodemon: ^2.0.20
   prettier: ^2.8.1
   tsup: ^6.5.0
@@ -16,6 +17,7 @@ dependencies:
   discord.js: 14.7.1
   dotenv: 16.0.3
   fastify: 4.10.2
+  fp-ts: 2.13.1
 
 devDependencies:
   '@octokit/webhooks-types': 6.7.0
@@ -793,6 +795,10 @@ packages:
   /forwarded/0.2.0:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
     engines: {node: '>= 0.6'}
+    dev: false
+
+  /fp-ts/2.13.1:
+    resolution: {integrity: sha512-0eu5ULPS2c/jsa1lGFneEFFEdTbembJv8e4QKXeVJ3lm/5hyve06dlKZrpxmMwJt6rYen7sxmHHK2CLaXvWuWQ==}
     dev: false
 
   /fs.realpath/1.0.0:

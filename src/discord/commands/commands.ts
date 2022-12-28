@@ -3,7 +3,7 @@ import { setupCommand } from "./setup.command.js";
 
 export interface Command {
   builder: SlashCommandBuilder;
-  execute: (interaction: Interaction) => Promise<void> | void;
+  execute: (interaction: Interaction) => Promise<void>;
 }
 
 const commands = new Collection<string, Command>();

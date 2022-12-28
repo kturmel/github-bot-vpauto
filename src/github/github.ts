@@ -6,19 +6,35 @@ import { discordClient } from "../discord/discord.js";
 import { discordConfig } from "../discord/config.js";
 import { verifySignature } from "./verify-signature.js";
 import { gitHubSecret } from "./variables.js";
+import { E, log, O, pipe, TE } from "../fp-ts.js";
 
 const server = Fastify({ logger: true });
 
 server.post("/github", async (req, reply) => {
-  const body = req.body as PullRequestEvent | { zen: string };
-  const signature = req.headers["x-hub-signature-256"] as string | undefined;
+  const bodyE = E.fromNullable(new Error("no body provided"))(
+    req.body as PullRequestEvent | { zen: string }
+  );
 
-  if (!signature) {
-    reply.status(401);
+  if (E.isLeft(bodyE)) {
+    log(bodyE.left)();
+
+    reply.status(400);
+
     return { ok: false };
   }
 
-  if (!verifySignature(gitHubSecret, JSON.stringify(body), signature)) {
+  const body = bodyE.right;
+
+  const isSignatureValid = pipe(
+    req.headers["x-hub-signature-256"] as string | undefined,
+    O.fromNullable,
+    O.map((signature) =>
+      verifySignature(gitHubSecret, JSON.stringify(body), signature)
+    ),
+    O.getOrElse(() => false)
+  );
+
+  if (!isSignatureValid) {
     reply.status(401);
     return { ok: false };
   }
@@ -31,29 +47,50 @@ server.post("/github", async (req, reply) => {
     return { ok: false };
   }
 
-  const channel = (await discordClient.channels.fetch(
-    discordConfig.channelId
-  )) as TextChannel;
+  const { channelId } = discordConfig;
 
-  const pullRequestMessage = pullRequestEventToChannelMessage(body);
+  const channelRes = await TE.tryCatch(
+    () => discordClient.channels.fetch(channelId) as Promise<TextChannel>,
+    (err) => new Error(`cannot fetch channel. Error given: ${err}`)
+  )();
 
-  if (!pullRequestMessage) {
+  if (E.isLeft(channelRes)) {
+    log(channelRes.left)();
+
     return { ok: false };
   }
 
-  await channel.send(pullRequestMessage);
+  const channel = channelRes.right;
+
+  const pullRequestMessage = pullRequestEventToChannelMessage(body);
+
+  if (O.isNone(pullRequestMessage)) {
+    log("pull request type not supported")();
+
+    return { ok: false };
+  }
+
+  const sendingMessage = await TE.tryCatch(
+    () => channel.send(pullRequestMessage.value),
+    (err) =>
+      new Error(
+        `cannot send pull request message to channel. Error given: ${err}`
+      )
+  )();
+
+  if (E.isLeft(sendingMessage)) {
+    log(sendingMessage.left)();
+
+    return { ok: false };
+  }
 
   return { ok: true };
 });
 
-export async function startGitHubServer() {
-  try {
-    await server.listen({ port: 8456, host: "0.0.0.0" });
-
-    return server;
-  } catch (err) {
-    server.log.error(err);
-    console.error(err);
-    process.exit(1);
-  }
-}
+export const startGitHubServer = pipe(
+  TE.tryCatch(
+    () => server.listen({ port: 8456, host: "0.0.0.0" }),
+    (e) => new Error(`cannot start github server. Error given: ${e}`)
+  ),
+  TE.map(() => server)
+);
