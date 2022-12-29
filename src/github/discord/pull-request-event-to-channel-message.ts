@@ -14,12 +14,12 @@ type PullRequestWebHookEvent =
 
 interface MessageOptions {
   taskNumber: O.Option<number>;
-  discordUser: O.Option<string>;
+  discordUser: O.Option<User>;
   userAvatarUrl: string;
 }
 
 interface MessageReviewOptions extends MessageOptions {
-  reviewDiscordUser: O.Option<string>;
+  reviewDiscordUser: O.Option<User>;
 }
 
 function extractTaskNumberFromPullRequest(
@@ -44,13 +44,10 @@ function extractTaskNumberFromPullRequest(
 
 function extractDiscordUserFromPullRequestReview(
   pullRequest: PullRequestReviewSubmittedEvent | PullRequestReviewRequestedEvent
-): O.Option<string> {
+): O.Option<User> {
   if (pullRequest.action === "submitted") {
-    return pipe(
-      gitHubUsers[pullRequest.review.user.login as keyof typeof gitHubUsers],
-      O.fromNullable,
-      O.map((user) => user.toString()),
-      O.chainNullableK(() => pullRequest.review.user.login)
+    return O.fromNullable(
+      gitHubUsers[pullRequest.review.user.login as keyof typeof gitHubUsers]
     );
   }
 
@@ -61,13 +58,10 @@ function extractDiscordUserFromPullRequestReview(
     return O.none;
   }
 
-  return pipe(
+  return O.fromNullable(
     gitHubUsers[
       pullRequest.requested_reviewer.login as keyof typeof gitHubUsers
-    ],
-    O.fromNullable,
-    O.map((user) => user.toString()),
-    O.chainNullableK(() => pullRequest.requested_reviewer.login)
+    ]
   );
 }
 
@@ -77,24 +71,17 @@ function transformTaskToDevOpsUrl(taskNumber: number) {
 
 function extractDiscordUserFromPullRequest(
   pullRequest: PullRequestWebHookEvent
-): User | null {
-  return (
-    gitHubUsers[
-      pullRequest.pull_request.user.login as keyof typeof gitHubUsers
-    ] ?? null
+): O.Option<User> {
+  return O.fromNullable(
+    gitHubUsers[pullRequest.pull_request.user.login as keyof typeof gitHubUsers]
   );
 }
 
 function extractDiscordUserNameFromPullRequest(
   pullRequest: PullRequestWebHookEvent
-): O.Option<string> {
-  return pipe(
-    gitHubUsers[
-      pullRequest.pull_request.user.login as keyof typeof gitHubUsers
-    ],
-    O.fromNullable,
-    O.map((user) => user.toString()),
-    O.chainNullableK(() => pullRequest.pull_request.user.login)
+): O.Option<User> {
+  return O.fromNullable(
+    gitHubUsers[pullRequest.pull_request.user.login as keyof typeof gitHubUsers]
   );
 }
 
@@ -133,10 +120,9 @@ function pullRequestMessageEmbeds(
   const fields: APIEmbedField[] = [
     {
       name: "Auteur",
-      value: pipe(
-        discordUser,
-        O.getOrElse(() => pullRequest.pull_request.user.login)
-      ),
+      value: O.isSome(discordUser)
+        ? discordUser.value.toString()
+        : pullRequest.pull_request.user.login,
     },
   ];
 
@@ -204,7 +190,7 @@ function reviewSubmittedPullRequestMessage(
 ) {
   let content: string;
   const reviewerDiscordUser = O.isSome(reviewDiscordUser)
-    ? ` par ${reviewDiscordUser.value}`
+    ? ` par ${reviewDiscordUser.value.toString()}`
     : "";
 
   if (pullRequest.review.state === "approved") {
@@ -291,16 +277,17 @@ export function pullRequestEventToChannelMessage(
 
   const taskNumber = extractTaskNumberFromPullRequest(pullRequest);
   const discordUser = extractDiscordUserNameFromPullRequest(pullRequest);
-  const userAvatarUrl =
-    extractDiscordUserFromPullRequest(pullRequest)?.avatarURL() ??
-    pullRequest.pull_request.user.avatar_url;
+  const userAvatarUrl = pipe(
+    extractDiscordUserFromPullRequest(pullRequest),
+    O.map((user) => O.fromNullable(user.avatarURL())),
+    O.flatten,
+    O.getOrElse(() => pullRequest.pull_request.user.avatar_url)
+  );
 
   switch (pullRequest.action) {
     case "submitted": {
-      const reviewDiscordUser = pipe(
-        pullRequest,
-        extractDiscordUserFromPullRequestReview
-      );
+      const reviewDiscordUser =
+        extractDiscordUserFromPullRequestReview(pullRequest);
 
       return O.some(
         reviewSubmittedPullRequestMessage(pullRequest, {
@@ -312,10 +299,8 @@ export function pullRequestEventToChannelMessage(
       );
     }
     case "review_requested": {
-      const reviewDiscordUser = pipe(
-        pullRequest,
-        extractDiscordUserFromPullRequestReview
-      );
+      const reviewDiscordUser =
+        extractDiscordUserFromPullRequestReview(pullRequest);
 
       return O.some(
         reviewRequestedPullRequestMessage(pullRequest, {
