@@ -1,5 +1,12 @@
 import crypto from "crypto";
 
+/**
+ * Verify the signature of a webhook payload.
+ *
+ * @param secret
+ * @param payload
+ * @param signature
+ */
 export function verifySignature(
   secret: string,
   payload: string,

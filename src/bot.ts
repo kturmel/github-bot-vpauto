@@ -2,6 +2,12 @@ import { deployCommands, handle, login } from "./discord/discord.js";
 import { startGitHubServer } from "./github/github.js";
 import { E, log, error, pipe, TE } from "./fp-ts.js";
 
+// start the discord bot
+// pre-start tasks are:
+// - login to discord
+// - deploy bots Discord commands
+// - start the GitHub WebHook server
+
 const res = await pipe(
   TE.fromIO(log("Starting bot...")),
   TE.chain(() => TE.fromIO(log("Login"))),

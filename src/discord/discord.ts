@@ -11,11 +11,17 @@ const rest = new REST({ version: "10" }).setToken(botToken);
 
 discordClient.rest = rest;
 
+/**
+ * We need to log in before we can use the client.
+ */
 export const login = TE.tryCatch(
   () => discordClient.login(botToken),
   (e) => new Error(`cannot login to discord. Error given: ${e}`)
 );
 
+/**
+ * Commands need to be registered before the client is ready.
+ */
 export const deployCommands = TE.tryCatch(
   () =>
     rest.put(Routes.applicationCommands(botAppId), {
@@ -24,6 +30,13 @@ export const deployCommands = TE.tryCatch(
   (e) => new Error(`cannot deploy commands to discord. Error given: ${e}`)
 );
 
+/**
+ * We listen to any interaction in the discord server.
+ *
+ * When the user calls a command, we will execute it.
+ *
+ * @example /vp-setup #my-channel
+ */
 export const handle: T.Task<void> = async () => {
   discordClient.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) {

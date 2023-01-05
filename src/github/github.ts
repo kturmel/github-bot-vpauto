@@ -10,21 +10,28 @@ import { E, log, O, pipe, TE } from "../fp-ts.js";
 
 const server = Fastify({ logger: true });
 
+/**
+ * This is called by GitHub Servers when a pull request event occurs.
+ *
+ * @see https://docs.github.com/en/developers/webhooks-and-events/webhooks/about-webhooks
+ */
 server.post("/github", async (req, reply) => {
-  const bodyE = E.fromNullable(new Error("no body provided"))(
+  const bodyOrError = E.fromNullable(new Error("no body provided"))(
     req.body as PullRequestEvent | { zen: string }
   );
 
-  if (E.isLeft(bodyE)) {
-    log(bodyE.left)();
+  if (E.isLeft(bodyOrError)) {
+    log(bodyOrError.left)();
 
     reply.status(400);
 
     return { ok: false };
   }
 
-  const body = bodyE.right;
+  const body = bodyOrError.right;
 
+  // GitHub send the signature in a header. We need to verify it to be sure that
+  // the request is coming from GitHub.
   const isSignatureValid = pipe(
     req.headers["x-hub-signature-256"] as string | undefined,
     O.fromNullable,
@@ -39,29 +46,33 @@ server.post("/github", async (req, reply) => {
     return { ok: false };
   }
 
+  // GitHub send a "zen" property when we need to ping the webhook.
   if ("zen" in body) {
     return { ok: true };
   }
 
+  // the bot is not yet configured to a channel
   if (!discordConfig.channelId) {
     return { ok: false };
   }
 
   const { channelId } = discordConfig;
 
-  const channelRes = await TE.tryCatch(
+  // get the discord configured channel
+  const channelTaskOrError = await TE.tryCatch(
     () => discordClient.channels.fetch(channelId) as Promise<TextChannel>,
     (err) => new Error(`cannot fetch channel. Error given: ${err}`)
   )();
 
-  if (E.isLeft(channelRes)) {
-    log(channelRes.left)();
+  if (E.isLeft(channelTaskOrError)) {
+    log(channelTaskOrError.left)();
 
     return { ok: false };
   }
 
-  const channel = channelRes.right;
+  const channel = channelTaskOrError.right;
 
+  // construct a Discord message from the pull request event
   const pullRequestMessage = pullRequestEventToChannelMessage(body);
 
   if (O.isNone(pullRequestMessage)) {
@@ -70,7 +81,7 @@ server.post("/github", async (req, reply) => {
     return { ok: false };
   }
 
-  const sendingMessage = await TE.tryCatch(
+  const sendingMessageTaskOrError = await TE.tryCatch(
     () => channel.send(pullRequestMessage.value),
     (err) =>
       new Error(
@@ -78,8 +89,8 @@ server.post("/github", async (req, reply) => {
       )
   )();
 
-  if (E.isLeft(sendingMessage)) {
-    log(sendingMessage.left)();
+  if (E.isLeft(sendingMessageTaskOrError)) {
+    log(sendingMessageTaskOrError.left)();
 
     return { ok: false };
   }

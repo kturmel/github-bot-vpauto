@@ -15,6 +15,11 @@ function isGuildTextChannel(
   return channel.type === ChannelType.GuildText;
 }
 
+/**
+ * Set up the bot to a channel.
+ *
+ * Without this command, the bot will not be able to send messages.
+ */
 export const setupCommand: Command = {
   builder: new SlashCommandBuilder()
     .setName("vp-setup")
@@ -29,6 +34,7 @@ export const setupCommand: Command = {
     )
     .setDMPermission(false),
   execute: async (interaction) => {
+    // this should never occur because Discord itself do the check. But who knows.
     if (!interaction.isChatInputCommand()) {
       return;
     }
@@ -43,6 +49,7 @@ export const setupCommand: Command = {
       return;
     }
 
+    // this should never occur because Discord itself do the check. But who knows.
     const isChannelGuildText = isGuildTextChannel(channelOpt.value);
 
     if (!isChannelGuildText) {
@@ -64,6 +71,9 @@ export const setupCommand: Command = {
 
     const channel = channelOpt.value;
 
+    // update the discord config with the new channel
+    // this will also save the config to the disk at ./config/discord-bot.config.json
+    // then send a message to the user that the bot is now configured
     const res = await pipe(
       TE.tryCatch(
         () =>
