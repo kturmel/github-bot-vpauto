@@ -1,15 +1,18 @@
 import {
   PullRequestEvent,
+  PullRequestReviewCommentCreatedEvent,
   PullRequestReviewRequestedEvent,
   PullRequestReviewSubmittedEvent,
 } from "@octokit/webhooks-types";
 import { APIEmbedField, MessageCreateOptions, User } from "discord.js";
 import { gitHubUsers } from "../../discord/github/users.js";
-import { O, pipe } from "../../fp-ts.js";
+import { O } from "../../fp-ts.js";
+import { match, P } from "ts-pattern";
 
 type PullRequestWebHookEvent =
   | PullRequestEvent
   | PullRequestReviewSubmittedEvent
+  | PullRequestReviewCommentCreatedEvent
   | PullRequestReviewRequestedEvent;
 
 type PullRequestReviewerRequestedEvent = Extract<
@@ -20,7 +23,6 @@ type PullRequestReviewerRequestedEvent = Extract<
 interface MessageOptions {
   taskNumber: O.Option<number>;
   pullRequestOwnerDiscordUser: O.Option<User>;
-  messageImageEmbedUrl: string;
 }
 
 interface MessageReviewOptions extends MessageOptions {
@@ -80,24 +82,32 @@ function extractPullRequestRequestedReviewerDiscordUser(
 }
 
 function extractPullRequestReviewerDiscordUser(
-  pullRequest: PullRequestReviewSubmittedEvent | PullRequestReviewRequestedEvent
+  pullRequest:
+    | PullRequestReviewSubmittedEvent
+    | PullRequestReviewRequestedEvent
+    | PullRequestReviewCommentCreatedEvent
 ): O.Option<User> {
-  if (pullRequest.action === "submitted") {
-    return O.fromNullable(
-      gitHubUsers[pullRequest.review.user.login as keyof typeof gitHubUsers]
-    );
-  }
-
-  if (
-    pullRequest.action === "review_requested" &&
-    "requested_team" in pullRequest
-  ) {
-    return O.none;
-  }
-
-  return O.fromNullable(
-    gitHubUsers[pullRequest.sender.login as keyof typeof gitHubUsers]
-  );
+  return match(pullRequest)
+    .with(
+      {
+        action: "submitted",
+      },
+      (p) =>
+        O.fromNullable(
+          gitHubUsers[p.review.user.login as keyof typeof gitHubUsers]
+        )
+    )
+    .with(
+      {
+        action: "review_requested",
+        requested_team: P.any,
+      },
+      () => O.none
+    )
+    .with(P._, (p) =>
+      O.fromNullable(gitHubUsers[p.sender.login as keyof typeof gitHubUsers])
+    )
+    .exhaustive();
 }
 
 function extractPullRequestOwnerDiscordUserName(
@@ -119,11 +129,7 @@ function transformTaskToDevOpsUrl(taskNumber: number) {
 
 function pullRequestMessageEmbeds(
   pullRequest: PullRequestWebHookEvent,
-  {
-    taskNumber,
-    pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl,
-  }: MessageOptions
+  { taskNumber, pullRequestOwnerDiscordUser }: MessageOptions
 ): MessageCreateOptions["embeds"] {
   const fields: APIEmbedField[] = [
     {
@@ -146,9 +152,6 @@ function pullRequestMessageEmbeds(
       title: `#${pullRequest.pull_request.number} — ${pullRequest.pull_request.title} (${pullRequest.repository.full_name})`,
       description:
         pullRequest.pull_request.body?.slice(0, 3000) ?? "Aucune description",
-      image: {
-        url: messageImageEmbedUrl,
-      },
       fields,
       url: pullRequest.pull_request.html_url,
     },
@@ -161,22 +164,16 @@ function pullRequestMessageEmbeds(
  * @param pullRequest
  * @param taskNumber
  * @param pullRequestOwnerDiscordUser
- * @param messageImageEmbedUrl
  */
 function openedPullRequestMessage(
   pullRequest: PullRequestWebHookEvent,
-  {
-    taskNumber,
-    pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl,
-  }: MessageOptions
+  { taskNumber, pullRequestOwnerDiscordUser }: MessageOptions
 ): MessageCreateOptions {
   return {
     content: `Nouvelle pull request #${pullRequest.pull_request.number}`,
     embeds: pullRequestMessageEmbeds(pullRequest, {
       taskNumber,
       pullRequestOwnerDiscordUser: pullRequestOwnerDiscordUser,
-      messageImageEmbedUrl,
     }),
   };
 }
@@ -187,22 +184,16 @@ function openedPullRequestMessage(
  * @param pullRequest
  * @param taskNumber
  * @param pullRequestOwnerDiscordUser
- * @param messageImageEmbedUrl
  */
 function mergedPullRequestMessage(
   pullRequest: PullRequestWebHookEvent,
-  {
-    taskNumber,
-    pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl,
-  }: MessageOptions
+  { taskNumber, pullRequestOwnerDiscordUser }: MessageOptions
 ): MessageCreateOptions {
   return {
     content: `Pull request #${pullRequest.pull_request.number} complétée`,
     embeds: pullRequestMessageEmbeds(pullRequest, {
       taskNumber,
       pullRequestOwnerDiscordUser,
-      messageImageEmbedUrl,
     }),
   };
 }
@@ -213,27 +204,27 @@ function mergedPullRequestMessage(
  * @param pullRequest
  * @param taskNumber
  * @param pullRequestOwnerDiscordUser
- * @param messageImageEmbedUrl
  */
 function pullRequestReviewMessageEmbeds(
-  pullRequest: PullRequestReviewSubmittedEvent,
-  {
-    taskNumber,
-    pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl,
-  }: MessageReviewOptions
+  pullRequest:
+    | PullRequestReviewSubmittedEvent
+    | PullRequestReviewCommentCreatedEvent,
+  { taskNumber, pullRequestOwnerDiscordUser }: MessageReviewOptions
 ): MessageCreateOptions["embeds"] {
   const embeds = pullRequestMessageEmbeds(pullRequest, {
     taskNumber,
     pullRequestOwnerDiscordUser: pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl: messageImageEmbedUrl,
   });
+
+  const description =
+    match(pullRequest)
+      .with({ review: P.any }, (p) => p.review.body?.slice(0, 1000))
+      .with({ comment: P.any }, (p) => p.comment.body?.slice(0, 1000))
+      .exhaustive() ?? "Commentaire indisponible";
 
   return embeds?.map((embed) => ({
     ...embed,
-    description: `${
-      pullRequest.review.body?.slice(0, 1000) ?? "Commentaire indisponible"
-    }`,
+    description,
   }));
 }
 
@@ -243,22 +234,16 @@ function pullRequestReviewMessageEmbeds(
  * @param pullRequest
  * @param taskNumber
  * @param pullRequestOwnerDiscordUser
- * @param messageImageEmbedUrl
  */
 function closedPullRequestMessage(
   pullRequest: PullRequestWebHookEvent,
-  {
-    taskNumber,
-    pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl,
-  }: MessageOptions
+  { taskNumber, pullRequestOwnerDiscordUser }: MessageOptions
 ) {
   return {
     content: `Pull request #${pullRequest.pull_request.number} fermée`,
     embeds: pullRequestMessageEmbeds(pullRequest, {
       taskNumber,
       pullRequestOwnerDiscordUser,
-      messageImageEmbedUrl,
     }),
   };
 }
@@ -271,41 +256,51 @@ function closedPullRequestMessage(
  * @param pullRequest
  * @param taskNumber
  * @param pullRequestOwnerDiscordUser
- * @param messageImageEmbedUrl
  * @param pullRequestReviewerDiscordUser
  */
 function reviewSubmittedPullRequestMessage(
-  pullRequest: PullRequestReviewSubmittedEvent,
+  pullRequest:
+    | PullRequestReviewSubmittedEvent
+    | PullRequestReviewCommentCreatedEvent,
   {
     taskNumber,
     pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl,
     pullRequestReviewerDiscordUser,
   }: MessageReviewOptions
 ) {
-  let content: string;
   const reviewerDiscordUser = O.isSome(pullRequestReviewerDiscordUser)
     ? ` par ${pullRequestReviewerDiscordUser.value.toString()}`
     : "";
 
-  if (pullRequest.review.state === "approved") {
-    content = `#${pullRequest.pull_request.number} approuvée${reviewerDiscordUser}`;
-  } else if (pullRequest.review.state === "changes_requested") {
-    content = `#${pullRequest.pull_request.number} changement demandé${reviewerDiscordUser}`;
-  } else if (pullRequest.review.state === "commented") {
-    content = `#${pullRequest.pull_request.number} commentée${reviewerDiscordUser}`;
-  } else if (pullRequest.review.state === "dismissed") {
-    content = `#${pullRequest.pull_request.number} rejetée${reviewerDiscordUser}`;
-  } else {
-    content = `#${pullRequest.pull_request.number} revue${reviewerDiscordUser}`;
-  }
+  const content = match(pullRequest)
+    .with(
+      { review: { state: "approved" } },
+      (p) => `#${p.pull_request.number} approuvée${reviewerDiscordUser}`
+    )
+    .with(
+      { review: { state: "changes_requested" } },
+      (p) =>
+        `#${p.pull_request.number} changement demandé${reviewerDiscordUser}`
+    )
+    .with(
+      { review: { state: "commented" } },
+      (p) => `#${p.pull_request.number} commentée${reviewerDiscordUser}`
+    )
+    .with(
+      { review: { state: "dismissed" } },
+      (p) => `#${p.pull_request.number} rejetée${reviewerDiscordUser}`
+    )
+    .with(
+      { comment: P.any },
+      (p) => `#${p.pull_request.number} commentée${reviewerDiscordUser}`
+    )
+    .exhaustive();
 
   return {
     content,
     embeds: pullRequestReviewMessageEmbeds(pullRequest, {
       taskNumber,
       pullRequestOwnerDiscordUser,
-      messageImageEmbedUrl,
       pullRequestReviewerDiscordUser,
     }),
   };
@@ -318,7 +313,6 @@ function reviewSubmittedPullRequestMessage(
  * @param pullRequest
  * @param taskNumber
  * @param pullRequestOwnerDiscordUser
- * @param messageImageEmbedUrl
  * @param pullRequestReviewerDiscordUser
  */
 function pullRequestRequestedMessageEmbeds(
@@ -326,14 +320,12 @@ function pullRequestRequestedMessageEmbeds(
   {
     taskNumber,
     pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl,
     pullRequestReviewerDiscordUser,
   }: MessageReviewOptions
 ) {
   const embeds = pullRequestMessageEmbeds(pullRequest, {
     taskNumber,
     pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl,
   });
 
   if ("requested_team" in pullRequest) {
@@ -357,7 +349,6 @@ function pullRequestRequestedMessageEmbeds(
  * @param pullRequest
  * @param taskNumber
  * @param pullRequestOwnerDiscordUser
- * @param messageImageEmbedUrl
  * @param pullRequestReviewerDiscordUser
  * @param pullRequestRequestedReviewerDiscordUser
  */
@@ -366,7 +357,6 @@ function reviewRequestedReviewerPullRequestMessage(
   {
     taskNumber,
     pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl,
     pullRequestReviewerDiscordUser,
     pullRequestRequestedReviewerDiscordUser,
   }: MessageRequestReviewOptions
@@ -384,7 +374,6 @@ function reviewRequestedReviewerPullRequestMessage(
     embeds: pullRequestRequestedMessageEmbeds(pullRequest, {
       taskNumber,
       pullRequestOwnerDiscordUser,
-      messageImageEmbedUrl,
       pullRequestReviewerDiscordUser,
     }),
   };
@@ -396,7 +385,6 @@ function reviewRequestedReviewerPullRequestMessage(
  * @param pullRequest - the pull request review_requested
  * @param taskNumber - the task number
  * @param pullRequestOwnerDiscordUser - Discord user of the pull request owner
- * @param messageImageEmbedUrl
  * @param pullRequestReviewerDiscordUser - Discord user of the pull request reviewer
  */
 function reviewRequestedChangesPullRequestMessage(
@@ -404,7 +392,6 @@ function reviewRequestedChangesPullRequestMessage(
   {
     taskNumber,
     pullRequestOwnerDiscordUser,
-    messageImageEmbedUrl,
     pullRequestReviewerDiscordUser,
   }: MessageReviewOptions
 ) {
@@ -421,7 +408,6 @@ function reviewRequestedChangesPullRequestMessage(
     embeds: pullRequestRequestedMessageEmbeds(pullRequest, {
       taskNumber,
       pullRequestOwnerDiscordUser,
-      messageImageEmbedUrl,
       pullRequestReviewerDiscordUser,
     }),
   };
@@ -452,78 +438,79 @@ export function pullRequestEventToChannelMessage(
   const taskNumber = extractTaskNumberFromPullRequest(pullRequest);
   const pullRequestOwnerDiscordUser =
     extractPullRequestOwnerDiscordUserName(pullRequest);
-  const userAvatarUrl = pipe(
-    pullRequestOwnerDiscordUser,
-    O.map((user) => O.fromNullable(user.avatarURL())),
-    O.flatten,
-    O.getOrElse(() => pullRequest.pull_request.user.avatar_url)
-  );
 
-  switch (pullRequest.action) {
-    case "submitted": {
+  return match(pullRequest)
+    .with({ action: "submitted" }, (p) => {
       const pullRequestReviewerDiscordUser =
-        extractPullRequestReviewerDiscordUser(pullRequest);
+        extractPullRequestReviewerDiscordUser(p);
 
       return O.some(
-        reviewSubmittedPullRequestMessage(pullRequest, {
+        reviewSubmittedPullRequestMessage(p, {
           taskNumber,
           pullRequestOwnerDiscordUser,
           pullRequestReviewerDiscordUser,
-          messageImageEmbedUrl: userAvatarUrl,
         })
       );
-    }
-    case "review_requested": {
+    })
+    .with({ action: "review_requested" }, (p) => {
       const pullRequestReviewerDiscordUser =
-        extractPullRequestReviewerDiscordUser(pullRequest);
+        extractPullRequestReviewerDiscordUser(p);
 
-      if (isThereAnyRequestedReviewer(pullRequest)) {
+      if (isThereAnyRequestedReviewer(p)) {
         const pullRequestRequestedReviewerDiscordUser =
-          extractPullRequestRequestedReviewerDiscordUser(pullRequest);
+          extractPullRequestRequestedReviewerDiscordUser(p);
 
         return O.some(
-          reviewRequestedReviewerPullRequestMessage(pullRequest, {
+          reviewRequestedReviewerPullRequestMessage(p, {
             taskNumber,
             pullRequestOwnerDiscordUser,
             pullRequestReviewerDiscordUser,
             pullRequestRequestedReviewerDiscordUser,
-            messageImageEmbedUrl: userAvatarUrl,
           })
         );
       }
 
       return O.some(
-        reviewRequestedChangesPullRequestMessage(pullRequest, {
+        reviewRequestedChangesPullRequestMessage(p, {
           taskNumber,
           pullRequestOwnerDiscordUser,
           pullRequestReviewerDiscordUser,
-          messageImageEmbedUrl: userAvatarUrl,
         })
       );
-    }
-    case "opened":
-      return O.some(
-        openedPullRequestMessage(pullRequest, {
+    })
+    .with({ action: "opened" }, (p) =>
+      O.some(
+        openedPullRequestMessage(p, {
           taskNumber,
           pullRequestOwnerDiscordUser,
-          messageImageEmbedUrl: userAvatarUrl,
         })
-      );
-    case "closed":
-      return O.some(
-        pullRequest.pull_request.merged
+      )
+    )
+    .with({ action: "closed" }, (p) =>
+      O.some(
+        p.pull_request.merged
           ? mergedPullRequestMessage(pullRequest, {
               taskNumber,
               pullRequestOwnerDiscordUser,
-              messageImageEmbedUrl: userAvatarUrl,
             })
           : closedPullRequestMessage(pullRequest, {
               taskNumber,
               pullRequestOwnerDiscordUser,
-              messageImageEmbedUrl: userAvatarUrl,
             })
+      )
+    )
+    .with({ action: "created" }, (p) => {
+      const pullRequestReviewerDiscordUser =
+        extractPullRequestReviewerDiscordUser(p);
+
+      return O.some(
+        reviewSubmittedPullRequestMessage(p, {
+          taskNumber,
+          pullRequestOwnerDiscordUser,
+          pullRequestReviewerDiscordUser,
+        })
       );
-    default:
-      return O.none;
-  }
+    })
+    .with(P._, () => O.none)
+    .exhaustive();
 }

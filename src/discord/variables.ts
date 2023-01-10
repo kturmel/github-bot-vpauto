@@ -13,3 +13,6 @@ if (process.env.BOT_APP_ID === undefined) {
 export const botToken = process.env.BOT_TOKEN as string;
 export const botGuildId = process.env.BOT_GUILD_ID as string;
 export const botAppId = process.env.BOT_APP_ID as string;
+
+export const botConfigFile =
+  process.env.BOT_CONFIG_FILE ?? "config/discord-bot.config.json";

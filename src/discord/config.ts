@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { botConfigFile } from "./variables.js";
 
 export interface DiscordBotConfig {
   channelId: string | null;
@@ -7,7 +8,7 @@ export interface DiscordBotConfig {
 
 // no watches are done. If you change the config file, you need to restart the app
 export let discordConfig = JSON.parse(
-  await fs.readFile(path.resolve("config/discord-bot.config.json"), "utf-8")
+  await fs.readFile(path.resolve(botConfigFile), "utf-8")
 ) as DiscordBotConfig;
 
 /**
@@ -18,7 +19,7 @@ export let discordConfig = JSON.parse(
  */
 export async function updateDiscordConfig(config: DiscordBotConfig) {
   await fs.writeFile(
-    path.resolve("config/discord-bot.config.json"),
+    path.resolve(botConfigFile),
     JSON.stringify(config, undefined, 2)
   );
 

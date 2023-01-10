@@ -35,9 +35,7 @@ server.post("/github", async (req, reply) => {
   const isSignatureValid = pipe(
     req.headers["x-hub-signature-256"] as string | undefined,
     O.fromNullable,
-    O.map((signature) =>
-      verifySignature(gitHubSecret, JSON.stringify(body), signature)
-    ),
+    O.map(verifySignature(gitHubSecret, JSON.stringify(body))),
     O.getOrElse(() => false)
   );
 
@@ -51,12 +49,12 @@ server.post("/github", async (req, reply) => {
     return { ok: true };
   }
 
+  const { channelId } = discordConfig;
+
   // the bot is not yet configured to a channel
-  if (!discordConfig.channelId) {
+  if (!channelId) {
     return { ok: false };
   }
-
-  const { channelId } = discordConfig;
 
   // get the discord configured channel
   const channelTaskOrError = await TE.tryCatch(

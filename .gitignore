@@ -1,4 +1,5 @@
 dist/
 node_modules/
 .env.local
-discord-bot.config.back.json
+.env.local.back
+config/discord-bot-local.config.json

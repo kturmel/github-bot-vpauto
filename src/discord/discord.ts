@@ -1,7 +1,7 @@
 import { Client, GatewayIntentBits, REST, Routes, Events } from "discord.js";
 import { botToken, botAppId } from "./variables.js";
 import { commands } from "./commands/commands.js";
-import { E, log, O, pipe, T, TE } from "../fp-ts.js";
+import { E, IO, log, O, pipe, T, TE } from "../fp-ts.js";
 
 const discordClient = new Client({
   intents: [GatewayIntentBits.GuildMessages],
@@ -37,7 +37,7 @@ export const deployCommands = TE.tryCatch(
  *
  * @example /vp-setup #my-channel
  */
-export const handle: T.Task<void> = async () => {
+export const handle: IO.IO<void> = () => {
   discordClient.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) {
       return;

@@ -10,6 +10,7 @@ specifiers:
   fp-ts: ^2.13.1
   nodemon: ^2.0.20
   prettier: ^2.8.1
+  ts-pattern: ^4.1.2
   tsup: ^6.5.0
   typescript: ^4.9.4
 
@@ -18,6 +19,7 @@ dependencies:
   dotenv: 16.0.3
   fastify: 4.10.2
   fp-ts: 2.13.1
+  ts-pattern: 4.1.2
 
 devDependencies:
   '@octokit/webhooks-types': 6.7.0
@@ -1515,6 +1517,10 @@ packages:
 
   /ts-mixer/6.0.2:
     resolution: {integrity: sha512-zvHx3VM83m2WYCE8XL99uaM7mFwYSkjR2OZti98fabHrwkjsCvgwChda5xctein3xGOyaQhtTeDq/1H/GNvF3A==}
+    dev: false
+
+  /ts-pattern/4.1.2:
+    resolution: {integrity: sha512-R/NEQHgeQwiyQyD5++s8rVB6jC1c6KiHHac2GEm0Pf82p3dth7s/kZfSimcUkVLjz+bPJn12721Vw9sbMpY5Rw==}
     dev: false
 
   /tslib/2.4.1:
