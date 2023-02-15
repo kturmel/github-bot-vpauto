@@ -6,7 +6,7 @@ import { startGitHubServer } from "./github/github.js";
 import { E, log, error, pipe, TE } from "./fp-ts.js";
 
 if (
-  (process.env.NODE_ENV === "production" && fs.existsSync(".env.local")) ||
+  (process.env.NODE_ENV === "production" && fs.existsSync(".env.production")) ||
   (process.env.NODE_ENV !== "production" && fs.existsSync(".env.local"))
 ) {
   config({
