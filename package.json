@@ -5,9 +5,11 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n js,node \"tsup --watch\" \"nodemon -r dotenv/config dist/bot.js dotenv_config_path=.env.local\"",
+    "dev": "concurrently -n js,node \"tsup --watch\" \"nodemon dist/bot.js\"",
     "build": "tsup",
-    "start": "node -r dotenv/config dist/bot.js dotenv_config_path=.env.local"
+    "start": "node dist/bot.js",
+    "build:docker": "docker build --platform linux/amd64 . -t vpauto-github/bot && node scripts/docker-tag.js",
+    "push:docker": "node scripts/docker-push.js"
   },
   "keywords": [],
   "author": "",

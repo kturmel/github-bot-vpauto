@@ -1,14 +1,17 @@
 import Fastify from "fastify";
 import { TextChannel } from "discord.js";
 import { PullRequestEvent } from "@octokit/webhooks-types";
-import { pullRequestEventToChannelMessage } from "./discord/pull-request-event-to-channel-message.js";
+import { webhookEventToChannelMessage } from "./discord/webhook-event-to-channel-message.js";
 import { discordClient } from "../discord/discord.js";
 import { discordConfig } from "../discord/config.js";
 import { verifySignature } from "./verify-signature.js";
 import { gitHubSecret } from "./variables.js";
 import { E, log, O, pipe, TE } from "../fp-ts.js";
+import { getGithubUsers, GitHubUsers } from "../discord/github/users.js";
 
 const server = Fastify({ logger: true });
+
+let githubUsers: GitHubUsers;
 
 /**
  * This is called by GitHub Servers when a pull request event occurs.
@@ -35,7 +38,7 @@ server.post("/github", async (req, reply) => {
   const isSignatureValid = pipe(
     req.headers["x-hub-signature-256"] as string | undefined,
     O.fromNullable,
-    O.map(verifySignature(gitHubSecret, JSON.stringify(body))),
+    O.map(verifySignature(gitHubSecret(), JSON.stringify(body))),
     O.getOrElse(() => false)
   );
 
@@ -71,10 +74,10 @@ server.post("/github", async (req, reply) => {
   const channel = channelTaskOrError.right;
 
   // construct a Discord message from the pull request event
-  const pullRequestMessage = pullRequestEventToChannelMessage(body);
+  const pullRequestMessage = webhookEventToChannelMessage(githubUsers)(body);
 
   if (O.isNone(pullRequestMessage)) {
-    log("pull request type not supported")();
+    log("webhook message is not supported")();
 
     return { ok: false };
   }
@@ -98,7 +101,11 @@ server.post("/github", async (req, reply) => {
 
 export const startGitHubServer = pipe(
   TE.tryCatch(
-    () => server.listen({ port: 8456, host: "0.0.0.0" }),
+    async () => {
+      githubUsers = await getGithubUsers();
+
+      return server.listen({ port: 8456, host: "0.0.0.0" });
+    },
     (e) => new Error(`cannot start github server. Error given: ${e}`)
   ),
   TE.map(() => server)

@@ -2,4 +2,6 @@ node_modules
 dist
 .idea
 test.json
+.env.local
+.env.production
 config/discord-bot-local.config.json

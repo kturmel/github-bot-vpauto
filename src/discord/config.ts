@@ -8,7 +8,7 @@ export interface DiscordBotConfig {
 
 // no watches are done. If you change the config file, you need to restart the app
 export let discordConfig = JSON.parse(
-  await fs.readFile(path.resolve(botConfigFile), "utf-8")
+  await fs.readFile(path.resolve(botConfigFile()), "utf-8")
 ) as DiscordBotConfig;
 
 /**
@@ -19,7 +19,7 @@ export let discordConfig = JSON.parse(
  */
 export async function updateDiscordConfig(config: DiscordBotConfig) {
   await fs.writeFile(
-    path.resolve(botConfigFile),
+    path.resolve(botConfigFile()),
     JSON.stringify(config, undefined, 2)
   );
 

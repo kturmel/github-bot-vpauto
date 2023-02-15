@@ -1,6 +1,30 @@
+import process from "node:process";
+import fs from "node:fs";
+import { config } from "dotenv";
 import { deployCommands, handle, login } from "./discord/discord.js";
 import { startGitHubServer } from "./github/github.js";
 import { E, log, error, pipe, TE } from "./fp-ts.js";
+
+if (
+  (process.env.NODE_ENV === "production" && fs.existsSync(".env.local")) ||
+  (process.env.NODE_ENV !== "production" && fs.existsSync(".env.local"))
+) {
+  config({
+    path:
+      process.env.NODE_ENV === "production" ? ".env.production" : ".env.local",
+  });
+}
+
+if (fs.existsSync(".env")) {
+  config({
+    path: ".env",
+  });
+}
+
+console.log({
+  NODE_ENV: process.env.NODE_ENV,
+  BOT_CONFIG_FILE: process.env.BOT_CONFIG_FILE,
+});
 
 /*
  * Start the discord bot

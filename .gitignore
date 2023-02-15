@@ -1,6 +1,6 @@
 dist/
 node_modules/
 .env.local
-.env.local.back
+.env.production
 config/discord-bot-local.config.json
 .idea/vcs.xml

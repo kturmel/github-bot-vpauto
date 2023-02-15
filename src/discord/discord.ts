@@ -1,21 +1,21 @@
-import { Client, GatewayIntentBits, REST, Routes, Events } from "discord.js";
-import { botToken, botAppId } from "./variables.js";
+import { Client, Events, GatewayIntentBits, REST, Routes } from "discord.js";
+import { botAppId, botToken } from "./variables.js";
 import { commands } from "./commands/commands.js";
-import { E, IO, log, O, pipe, T, TE } from "../fp-ts.js";
+import { E, IO, log, O, pipe, TE } from "../fp-ts.js";
 
 const discordClient = new Client({
   intents: [GatewayIntentBits.GuildMessages],
 });
 
-const rest = new REST({ version: "10" }).setToken(botToken);
-
-discordClient.rest = rest;
-
 /**
  * We need to log in before we can use the client.
  */
 export const login = TE.tryCatch(
-  () => discordClient.login(botToken),
+  async () => {
+    discordClient.rest = new REST({ version: "10" }).setToken(botToken());
+
+    return discordClient.login(botToken());
+  },
   (e) => new Error(`cannot login to discord. Error given: ${e}`)
 );
 
@@ -24,7 +24,7 @@ export const login = TE.tryCatch(
  */
 export const deployCommands = TE.tryCatch(
   () =>
-    rest.put(Routes.applicationCommands(botAppId), {
+    discordClient.rest.put(Routes.applicationCommands(botAppId()), {
       body: commands.map((command) => command.builder.toJSON()),
     }) as Promise<void>,
   (e) => new Error(`cannot deploy commands to discord. Error given: ${e}`)

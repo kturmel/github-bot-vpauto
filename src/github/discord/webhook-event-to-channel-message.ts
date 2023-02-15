@@ -5,7 +5,11 @@ import {
   PullRequestReviewSubmittedEvent,
 } from "@octokit/webhooks-types";
 import { APIEmbedField, MessageCreateOptions, User } from "discord.js";
-import { gitHubUsers } from "../../discord/github/users.js";
+import {
+  getGithubUsers,
+  GitHubUsernames,
+  GitHubUsers,
+} from "../../discord/github/users.js";
 import { O } from "../../fp-ts.js";
 import { match, P } from "ts-pattern";
 
@@ -14,6 +18,18 @@ type PullRequestWebHookEvent =
   | PullRequestReviewSubmittedEvent
   | PullRequestReviewCommentCreatedEvent
   | PullRequestReviewRequestedEvent;
+
+type PullRequestReviewSubmittedEventWithoutComment = Omit<
+  PullRequestReviewSubmittedEvent,
+  "review"
+> & {
+  review: Omit<PullRequestReviewSubmittedEvent["review"], "state"> & {
+    state: Exclude<
+      PullRequestReviewSubmittedEvent["review"]["state"],
+      "commented"
+    >;
+  };
+};
 
 type PullRequestReviewerRequestedEvent = Extract<
   PullRequestReviewRequestedEvent,
@@ -70,32 +86,29 @@ function extractTaskNumberFromPullRequest(
 }
 
 function extractPullRequestRequestedReviewerDiscordUser(
-  pullRequest: PullRequestReviewRequestedEvent
+  pullRequest: PullRequestReviewRequestedEvent,
+  githubUsers: GitHubUsers
 ): O.Option<User> {
   if (!isThereAnyRequestedReviewer(pullRequest)) return O.none;
 
   return O.fromNullable(
-    gitHubUsers[
-      pullRequest.requested_reviewer.login as keyof typeof gitHubUsers
-    ]
+    githubUsers[pullRequest.requested_reviewer.login as GitHubUsernames]
   );
 }
 
 function extractPullRequestReviewerDiscordUser(
   pullRequest:
-    | PullRequestReviewSubmittedEvent
+    | PullRequestReviewSubmittedEventWithoutComment
     | PullRequestReviewRequestedEvent
-    | PullRequestReviewCommentCreatedEvent
+    | PullRequestReviewCommentCreatedEvent,
+  githubUsers: GitHubUsers
 ): O.Option<User> {
   return match(pullRequest)
     .with(
       {
         action: "submitted",
       },
-      (p) =>
-        O.fromNullable(
-          gitHubUsers[p.review.user.login as keyof typeof gitHubUsers]
-        )
+      (p) => O.fromNullable(githubUsers[p.review.user.login as GitHubUsernames])
     )
     .with(
       {
@@ -105,16 +118,17 @@ function extractPullRequestReviewerDiscordUser(
       () => O.none
     )
     .with(P._, (p) =>
-      O.fromNullable(gitHubUsers[p.sender.login as keyof typeof gitHubUsers])
+      O.fromNullable(githubUsers[p.sender.login as GitHubUsernames])
     )
     .exhaustive();
 }
 
 function extractPullRequestOwnerDiscordUserName(
-  pullRequest: PullRequestWebHookEvent
+  pullRequest: PullRequestWebHookEvent,
+  githubUsers: GitHubUsers
 ): O.Option<User> {
   return O.fromNullable(
-    gitHubUsers[pullRequest.pull_request.user.login as keyof typeof gitHubUsers]
+    githubUsers[pullRequest.pull_request.user.login as GitHubUsernames]
   );
 }
 
@@ -260,7 +274,7 @@ function closedPullRequestMessage(
  */
 function reviewSubmittedPullRequestMessage(
   pullRequest:
-    | PullRequestReviewSubmittedEvent
+    | PullRequestReviewSubmittedEventWithoutComment
     | PullRequestReviewCommentCreatedEvent,
   {
     taskNumber,
@@ -281,10 +295,6 @@ function reviewSubmittedPullRequestMessage(
       { review: { state: "changes_requested" } },
       (p) =>
         `#${p.pull_request.number} changement demandé${reviewerDiscordUser}`
-    )
-    .with(
-      { review: { state: "commented" } },
-      (p) => `#${p.pull_request.number} commentée${reviewerDiscordUser}`
     )
     .with(
       { review: { state: "dismissed" } },
@@ -426,91 +436,112 @@ function reviewRequestedChangesPullRequestMessage(
  *  - user request a review
  *  - user request changes
  *
- * @param pullRequest - The pull request to handle
+ * @param gitHubUsers
  */
-export function pullRequestEventToChannelMessage(
-  pullRequest: PullRequestWebHookEvent
-): O.Option<MessageCreateOptions> {
-  if (pullRequest.pull_request.draft) {
-    return O.none;
-  }
+export const webhookEventToChannelMessage =
+  (gitHubUsers: GitHubUsers) =>
+  /**
+   *
+   *
+   * @param pullRequest - The pull request to handle
+   */
+  (pullRequest: PullRequestWebHookEvent): O.Option<MessageCreateOptions> => {
+    if (pullRequest.pull_request.draft) {
+      return O.none;
+    }
 
-  const taskNumber = extractTaskNumberFromPullRequest(pullRequest);
-  const pullRequestOwnerDiscordUser =
-    extractPullRequestOwnerDiscordUserName(pullRequest);
+    const taskNumber = extractTaskNumberFromPullRequest(pullRequest);
+    const pullRequestOwnerDiscordUser = extractPullRequestOwnerDiscordUserName(
+      pullRequest,
+      gitHubUsers
+    );
 
-  return match(pullRequest)
-    .with({ action: "submitted" }, (p) => {
-      const pullRequestReviewerDiscordUser =
-        extractPullRequestReviewerDiscordUser(p);
+    return match(pullRequest)
+      .with(
+        {
+          action: "submitted",
+          review: {
+            state: "commented",
+          },
+        },
+        () => O.none
+      )
+      .with(
+        {
+          action: "submitted",
+        },
+        (p: PullRequestReviewSubmittedEventWithoutComment) => {
+          const pullRequestReviewerDiscordUser =
+            extractPullRequestReviewerDiscordUser(p, gitHubUsers);
 
-      return O.some(
-        reviewSubmittedPullRequestMessage(p, {
-          taskNumber,
-          pullRequestOwnerDiscordUser,
-          pullRequestReviewerDiscordUser,
-        })
-      );
-    })
-    .with({ action: "review_requested" }, (p) => {
-      const pullRequestReviewerDiscordUser =
-        extractPullRequestReviewerDiscordUser(p);
+          return O.some(
+            reviewSubmittedPullRequestMessage(p, {
+              taskNumber,
+              pullRequestOwnerDiscordUser,
+              pullRequestReviewerDiscordUser,
+            })
+          );
+        }
+      )
+      .with({ action: "review_requested" }, (p) => {
+        const pullRequestReviewerDiscordUser =
+          extractPullRequestReviewerDiscordUser(p, gitHubUsers);
 
-      if (isThereAnyRequestedReviewer(p)) {
-        const pullRequestRequestedReviewerDiscordUser =
-          extractPullRequestRequestedReviewerDiscordUser(p);
+        if (isThereAnyRequestedReviewer(p)) {
+          const pullRequestRequestedReviewerDiscordUser =
+            extractPullRequestRequestedReviewerDiscordUser(p, gitHubUsers);
+
+          return O.some(
+            reviewRequestedReviewerPullRequestMessage(p, {
+              taskNumber,
+              pullRequestOwnerDiscordUser,
+              pullRequestReviewerDiscordUser,
+              pullRequestRequestedReviewerDiscordUser,
+            })
+          );
+        }
 
         return O.some(
-          reviewRequestedReviewerPullRequestMessage(p, {
+          reviewRequestedChangesPullRequestMessage(p, {
             taskNumber,
             pullRequestOwnerDiscordUser,
             pullRequestReviewerDiscordUser,
-            pullRequestRequestedReviewerDiscordUser,
           })
         );
-      }
-
-      return O.some(
-        reviewRequestedChangesPullRequestMessage(p, {
-          taskNumber,
-          pullRequestOwnerDiscordUser,
-          pullRequestReviewerDiscordUser,
-        })
-      );
-    })
-    .with({ action: "opened" }, (p) =>
-      O.some(
-        openedPullRequestMessage(p, {
-          taskNumber,
-          pullRequestOwnerDiscordUser,
-        })
+      })
+      .with({ action: "opened" }, (p) =>
+        O.some(
+          openedPullRequestMessage(p, {
+            taskNumber,
+            pullRequestOwnerDiscordUser,
+          })
+        )
       )
-    )
-    .with({ action: "closed" }, (p) =>
-      O.some(
-        p.pull_request.merged
-          ? mergedPullRequestMessage(pullRequest, {
-              taskNumber,
-              pullRequestOwnerDiscordUser,
-            })
-          : closedPullRequestMessage(pullRequest, {
-              taskNumber,
-              pullRequestOwnerDiscordUser,
-            })
+      .with({ action: "closed" }, (p) =>
+        O.some(
+          p.pull_request.merged
+            ? mergedPullRequestMessage(pullRequest, {
+                taskNumber,
+                pullRequestOwnerDiscordUser,
+              })
+            : closedPullRequestMessage(pullRequest, {
+                taskNumber,
+                pullRequestOwnerDiscordUser,
+              })
+        )
       )
-    )
-    .with({ action: "created" }, (p) => {
-      const pullRequestReviewerDiscordUser =
-        extractPullRequestReviewerDiscordUser(p);
+      .with({ action: "created" }, (p) => {
+        const pullRequestReviewerDiscordUser =
+          extractPullRequestReviewerDiscordUser(p, gitHubUsers);
 
-      return O.some(
-        reviewSubmittedPullRequestMessage(p, {
-          taskNumber,
-          pullRequestOwnerDiscordUser,
-          pullRequestReviewerDiscordUser,
-        })
-      );
-    })
-    .with(P._, () => O.none)
-    .exhaustive();
-}
+        return O.some(
+          reviewSubmittedPullRequestMessage(p, {
+            taskNumber,
+            pullRequestOwnerDiscordUser,
+            pullRequestReviewerDiscordUser,
+          })
+        );
+      })
+      .with(P._, () => O.none)
+      .exhaustive();
+  };
