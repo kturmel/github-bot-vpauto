@@ -4,3 +4,5 @@ node_modules/
 .env.production
 config/discord-bot-local.config.json
 .idea/vcs.xml
+lib/
+src-res/**/*.mjs

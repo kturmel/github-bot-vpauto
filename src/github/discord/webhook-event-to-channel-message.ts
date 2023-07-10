@@ -464,6 +464,8 @@ export const webhookEventToChannelMessage =
             state: "commented",
           },
         },
+        // TODO: handle review submitted with comment (no changes requested, no approval)
+        // TODO: change fp-ts to use ts-results for better error handling, and remove fp programing
         () => O.none
       )
       .with(

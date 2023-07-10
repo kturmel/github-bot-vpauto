@@ -1,0 +1,17 @@
+{
+  "name": "vpauto-github-bot",
+  "sources": [
+    {
+      "dir": "src-res",
+      "subdirs": true
+    }
+  ],
+  "package-specs": [
+    {
+      "module": "es6",
+      "in-source": true
+    }
+  ],
+  "suffix": ".bs.mjs",
+  "bs-dependencies": ["rescript-nodejs"]
+}
