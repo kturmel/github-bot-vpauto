@@ -1,1 +1,1 @@
-type t = | @as(Js.Bigint) Administrator
+type t = | @as(8) Administrator
