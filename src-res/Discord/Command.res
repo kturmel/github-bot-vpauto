@@ -1,4 +1,4 @@
 type t = {
   builder: SlashCommandBuilder.t,
-  execute: Events.Interaction.t => promise<unit>,
+  execute: Interaction.t => promise<unit>,
 }

@@ -1,10 +1,10 @@
-type botConfig = {channelId: option<string>}
+type t = {channelId: option<string>}
 
 type updateError = WriteError(Js.Exn.t)
 
-type readError = ChannelIdNotFound | ParseError(Js.Exn.t) | InvalidConfig
+type readError = ChannelIdNotFound | ParseError(Js.Exn.t) | InvalidConfig | NotAString
 
-let discordConfig = async () => {
+let discordConfig = async (): result<t, readError> => {
   let configFileBuffer = await Fs.fs->Fs.readFile(Path.path->Path.resolve(Env.configFile()))
   let config = Json.parse(configFileBuffer->Buffer.toString)
 
@@ -13,7 +13,11 @@ let discordConfig = async () => {
     switch Js.Json.classify(config) {
     | Js.Json.JSONObject(config) =>
       switch Js.Dict.get(config, "channelId") {
-      | Some(channelId) => Ok(channelId)
+      | Some(channelId) =>
+        switch Js.Json.classify(channelId) {
+        | Js.Json.JSONString(channelId) => Ok({channelId: Some(channelId)})
+        | _ => Error(NotAString)
+        }
       | None => Error(ChannelIdNotFound)
       }
     | _ => Error(InvalidConfig)
@@ -24,7 +28,12 @@ let discordConfig = async () => {
 
 let updateDiscordConfig = async config => {
   try {
-    await Fs.fs->Fs.writeFile(Path.path->Path.resolve(Env.configFile()), config->Js.Json.stringify)
+    let asString = config->Js.Json.stringifyAny
+
+    switch asString {
+    | Some(config) => await Fs.fs->Fs.writeFile(Path.path->Path.resolve(Env.configFile()), config)
+    | None => ()
+    }
 
     Ok()
   } catch {

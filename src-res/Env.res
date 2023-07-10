@@ -1,5 +1,9 @@
 exception EnvNotDefined(string)
 
+let isProduction = () => {
+  Process.process->Process.env->Js.Dict.get("NODE_ENV") == Some("production")
+}
+
 let getEnv = (key: string, ~defaults=?) => {
   let valueFromEnv = Process.process->Process.env->Js.Dict.get(key)
 

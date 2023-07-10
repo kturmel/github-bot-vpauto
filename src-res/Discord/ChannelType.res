@@ -1,1 +1,1 @@
-type t = GuildText
+type t = | @as(0) GuildText

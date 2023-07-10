@@ -1,5 +1,4 @@
 exception UnknownCommand
-exception CannotReply(Js.Exn.t)
 
 let commands = Commands.commands
 
@@ -15,7 +14,7 @@ let login = async (): Client.t => {
       }),
       Env.token(),
     )
-    discordClient->Client.login(Env.token())
+    await discordClient->Client.login(Env.token())
   } {
   | client => client
   | exception Js.Exn.Error(e) =>
@@ -44,20 +43,20 @@ let deployCommands = async () => {
 
 let handle = () => {
   discordClient->Client.on(Events.InteractionCreate, async interaction => {
-    if interaction->Events.Interaction.isChatInputCommand {
+    if interaction->Interaction.isChatInputCommand {
       let command = commands->Collection.get(interaction.commandName)
 
       switch command {
       | Some(command) =>
         switch await command.execute(interaction) {
-        | _ => Js.log("command executed")
+        | _ => Js.log(`command ${interaction.commandName} executed`)
         | exception Js.Exn.Error(e) =>
-          switch await interaction->Events.Interaction.reply({
+          switch await interaction->Interaction.reply({
             content: Js.Option.getWithDefault("unknown error", Js.Exn.message(e)),
             ephemeral: true,
           }) {
           | _ => Js.log("error replied")
-          | exception Js.Exn.Error(e) => raise(CannotReply(e))
+          | exception Js.Exn.Error(e) => raise(Interaction.CannotReply(e))
           }
         }
       | None => raise(UnknownCommand)
