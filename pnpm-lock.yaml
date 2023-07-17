@@ -20,6 +20,9 @@ dependencies:
   rescript-nodejs:
     specifier: github:DZakh/rescript-nodejs#3c29dcd
     version: github.com/DZakh/rescript-nodejs/3c29dcd
+  rescript-struct:
+    specifier: ^4.1.1
+    version: 4.1.1(rescript@11.0.0-beta.3)
   ts-pattern:
     specifier: ^4.1.2
     version: 4.1.2
@@ -1269,12 +1272,19 @@ packages:
     engines: {node: '>=0.10.0'}
     dev: false
 
+  /rescript-struct@4.1.1(rescript@11.0.0-beta.3):
+    resolution: {integrity: sha512-LmlFhnAMeQEGZhQJoEC8Mk/P0GgEWVawmQB2fbV9+ILzyTSESogKS2NtP6jd3/82joG5Nxon6Ml0SjpQqVHYhA==}
+    peerDependencies:
+      rescript: 10.1.x || ~11.0.0-alpha
+    dependencies:
+      rescript: 11.0.0-beta.3
+    dev: false
+
   /rescript@11.0.0-beta.3:
     resolution: {integrity: sha512-j3YT3VdWMoHgwL4RydKJm9O/VIpN3NTI6keP18rZVJ8ansRKgkHYGLaIwoG6iVqSYYwBjb6d8l8oZ1Jz0fmTeQ==}
     engines: {node: '>=10'}
     hasBin: true
     requiresBuild: true
-    dev: true
 
   /resolve-from@5.0.0:
     resolution: {integrity: sha512-qYg9KP24dD5qka9J47d0aVky0N+b4fTU89LN9iDnjB5waksiC49rvMB0PrUJQGoTmH50XPiqOvAjDfaijGxYZw==}

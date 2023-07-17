@@ -1,5 +1,5 @@
 import { Collection, Interaction, SlashCommandBuilder } from "discord.js";
-import { setupCommand } from "./setup.command.js";
+import { setupCommand } from "./setupCommand.js";
 
 export interface Command {
   builder: SlashCommandBuilder;

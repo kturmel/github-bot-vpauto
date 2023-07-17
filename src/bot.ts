@@ -1,9 +1,15 @@
 import process from "node:process";
 import fs from "node:fs";
 import { config } from "dotenv";
-import { deployCommands, handle, login } from "./discord/discord.js";
-import { startGitHubServer } from "./github/github.js";
-import { E, log, error, pipe, TE } from "./fp-ts.js";
+import {
+  CannotDeployCommandsError,
+  CannotLoginError,
+  deployCommands,
+  handle,
+  login,
+} from "./discord/discord.js";
+import { CannotFetchDiscordUsersError, startServer } from "./github/github.js";
+import { retry } from "./exn.js";
 
 if (
   (process.env.NODE_ENV === "production" && fs.existsSync(".env.production")) ||
@@ -13,12 +19,16 @@ if (
     path:
       process.env.NODE_ENV === "production" ? ".env.production" : ".env.local",
   });
+
+  console.log("using .env.*");
 }
 
 if (fs.existsSync(".env")) {
   config({
     path: ".env",
   });
+
+  console.log("using .env");
 }
 
 console.log({
@@ -34,19 +44,45 @@ console.log({
  * - start the GitHub WebHook server
  */
 
-const res = await pipe(
-  TE.fromIO(log("starting bot...")),
-  TE.chain(() => TE.fromIO(log("login"))),
-  TE.chain(() => login),
-  TE.chain(() => TE.fromIO(log("deploy Bot Commands"))),
-  TE.chain(() => deployCommands),
-  TE.chain(() => TE.fromIO(log("start GitHub server"))),
-  TE.chain(() => startGitHubServer),
-  TE.chain(() => TE.fromIO(log("the bot is ready!"))),
-  TE.chain(() => TE.fromIO(handle))
-)();
+console.log("starting bot...");
+console.log("login to discord");
 
-if (E.isLeft(res)) {
-  error(res.left)();
-  process.exit(1);
+try {
+  await retry(() => login(), 3);
+} catch (err) {
+  if (err instanceof CannotLoginError) {
+    console.log("cannot login to discord", err);
+
+    process.exit(1);
+  }
+
+  throw err;
 }
+
+try {
+  await retry(() => deployCommands(), 3);
+} catch (err) {
+  if (err instanceof CannotDeployCommandsError) {
+    console.log("cannot deploy commands to discord", err);
+
+    process.exit(1);
+  }
+
+  throw err;
+}
+
+try {
+  await startServer();
+} catch (err) {
+  if (err instanceof CannotFetchDiscordUsersError) {
+    console.error("cannot fetch discord users", err);
+
+    process.exit(1);
+  }
+
+  throw err;
+}
+
+console.log("the bot is ready!");
+
+await handle();

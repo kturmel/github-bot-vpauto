@@ -1,3 +1,3 @@
-import { getEnv } from "../lib/get-env.js";
+import { env } from "../lib/env.js";
 
-export const gitHubSecret = () => getEnv("GITHUB_WEBHOOK_SECRET");
+export const gitHubSecret = () => env("GITHUB_WEBHOOK_SECRET");
