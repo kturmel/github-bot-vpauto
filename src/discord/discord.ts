@@ -1,34 +1,47 @@
 import { Client, Events, GatewayIntentBits, REST, Routes } from "discord.js";
-import { botAppId, botToken } from "./variables.js";
+import { appId, token } from "./variables.js";
 import { commands } from "./commands/commands.js";
-import { E, IO, log, O, pipe, TE } from "../fp-ts.js";
+import { toExn } from "../exn.js";
 
-const discordClient = new Client({
+export const discordClient = new Client({
   intents: [GatewayIntentBits.GuildMessages],
 });
+
+export class CannotLoginError extends Error {}
+export class CannotDeployCommandsError extends Error {}
+export class CannotExecuteCommandError extends Error {}
+export class CannotReplyError extends Error {}
+export class UnknownCommandError extends Error {}
 
 /**
  * We need to log in before we can use the client.
  */
-export const login = TE.tryCatch(
-  async () => {
-    discordClient.rest = new REST({ version: "10" }).setToken(botToken());
+export async function login() {
+  discordClient.rest = new REST({ version: "10" }).setToken(token());
 
-    return discordClient.login(botToken());
-  },
-  (e) => new Error(`cannot login to discord. Error given: ${e}`)
-);
+  try {
+    return await discordClient.login(token());
+  } catch (err) {
+    throw new CannotLoginError("cannot login to discord", {
+      cause: err,
+    });
+  }
+}
 
 /**
  * Commands need to be registered before the client is ready.
  */
-export const deployCommands = TE.tryCatch(
-  () =>
-    discordClient.rest.put(Routes.applicationCommands(botAppId()), {
+export async function deployCommands() {
+  try {
+    await discordClient.rest.put(Routes.applicationCommands(appId()), {
       body: commands.map((command) => command.builder.toJSON()),
-    }) as Promise<void>,
-  (e) => new Error(`cannot deploy commands to discord. Error given: ${e}`)
-);
+    });
+  } catch (err) {
+    throw new CannotDeployCommandsError("cannot deploy commands to discord", {
+      cause: err,
+    });
+  }
+}
 
 /**
  * We listen to any interaction in the discord server.
@@ -37,36 +50,35 @@ export const deployCommands = TE.tryCatch(
  *
  * @example /vp-setup #my-channel
  */
-export const handle: IO.IO<void> = () => {
+export function handle() {
   discordClient.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) {
-      return;
+      console.log("this interaction is not a chat input command");
+
+      return undefined;
     }
 
-    const command = O.fromNullable(commands.get(interaction.commandName));
+    const command = commands.get(interaction.commandName);
 
-    if (O.isNone(command)) return;
+    if (command === undefined) {
+      throw new UnknownCommandError();
+    }
 
-    const res = await pipe(
-      TE.tryCatch(
-        () => command.value.execute(interaction),
-        (err) =>
-          new Error(
-            `cannot execute ${interaction.commandName}. Error given: ${err}`
-          )
-      ),
-      TE.orElseW((e) => {
-        return TE.tryCatch(
-          () => interaction.reply({ content: e.message, ephemeral: true }),
-          (err) => new Error(`cannot reply. Error given: ${err}`)
-        );
-      })
-    )();
+    try {
+      await command.execute(interaction);
+    } catch (err) {
+      const exn = toExn(err);
 
-    if (E.isLeft(res)) {
-      log(res.left)();
+      console.log(
+        "cannot execute command",
+        new CannotExecuteCommandError("cannot execute command", { cause: exn })
+      );
+
+      try {
+        await interaction.reply({ content: exn.message, ephemeral: true });
+      } catch (err$1) {
+        throw new CannotReplyError("cannot reply to channel", { cause: err$1 });
+      }
     }
   });
-};
-
-export { discordClient };
+}

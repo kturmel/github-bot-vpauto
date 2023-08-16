@@ -1,4 +1,3 @@
-import console from "node:console";
 import process from "node:process";
 import { exec } from "node:child_process";
 import { config } from "dotenv";
