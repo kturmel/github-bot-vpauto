@@ -5,4 +5,3 @@ node_modules/
 config/discord-bot-local.config.json
 .idea/vcs.xml
 lib/
-src-res/**/*.js

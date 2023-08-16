@@ -455,7 +455,7 @@ export const webhookEventToChannelMessage = (
           state: "commented",
         },
       },
-      // TODO: handle review submitted with comment (no changes requested, no approval)
+      // TODO: handle new comment without any review
       () => undefined
     )
     .with(
